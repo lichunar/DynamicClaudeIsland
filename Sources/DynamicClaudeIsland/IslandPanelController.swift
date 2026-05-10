@@ -10,6 +10,12 @@ final class FloatingIslandPanel: NSPanel {
     }
 }
 
+final class DraggableIslandView: NSView {
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
+}
+
 @MainActor
 protocol IslandPanelControllerDelegate: AnyObject {
     func islandPanel(_ controller: IslandPanelController, didSubmit prompt: String, session: ClaudeSession)
@@ -46,7 +52,7 @@ final class IslandPanelController: NSWindowController, NSTextFieldDelegate {
     private let compactSize = NSSize(width: 300, height: 36)
     private let expandedSize = NSSize(width: 760, height: 188)
 
-    private let rootView = NSView()
+    private let rootView = DraggableIslandView()
     private let compactLabel = NSTextField(labelWithString: "Claude Code · 就绪")
     private let statusLabel = NSTextField(labelWithString: "就绪")
     private let sessionPopup = NSPopUpButton()
@@ -77,7 +83,7 @@ final class IslandPanelController: NSWindowController, NSTextFieldDelegate {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = false
+        panel.isMovableByWindowBackground = true
 
         super.init(window: panel)
         panel.contentView = rootView
@@ -398,7 +404,11 @@ final class IslandPanelController: NSWindowController, NSTextFieldDelegate {
             return
         }
         let screenFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let frame = Self.frame(size: expanded ? expandedSize : compactSize, in: screenFrame)
+        let frame = Self.frame(
+            size: expanded ? expandedSize : compactSize,
+            in: screenFrame,
+            anchoredTo: window.frame
+        )
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.16
@@ -429,13 +439,27 @@ final class IslandPanelController: NSWindowController, NSTextFieldDelegate {
         trackingArea = area
     }
 
-    private static func frame(size: NSSize, in screenFrame: NSRect) -> NSRect {
-        NSRect(
-            x: screenFrame.midX - size.width / 2,
-            y: screenFrame.maxY - size.height - 8,
-            width: size.width,
-            height: size.height
-        )
+    private static func frame(size: NSSize, in screenFrame: NSRect, anchoredTo currentFrame: NSRect? = nil) -> NSRect {
+        let margin: CGFloat = 8
+        let proposedX: CGFloat
+        let proposedY: CGFloat
+
+        if let currentFrame {
+            proposedX = currentFrame.midX - size.width / 2
+            proposedY = currentFrame.maxY - size.height
+        } else {
+            proposedX = screenFrame.midX - size.width / 2
+            proposedY = screenFrame.maxY - size.height - margin
+        }
+
+        let minX = screenFrame.minX + margin
+        let maxX = screenFrame.maxX - size.width - margin
+        let minY = screenFrame.minY + margin
+        let maxY = screenFrame.maxY - size.height - margin
+        let x = maxX >= minX ? min(max(proposedX, minX), maxX) : screenFrame.midX - size.width / 2
+        let y = maxY >= minY ? min(max(proposedY, minY), maxY) : screenFrame.midY - size.height / 2
+
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     private func compactTitle() -> String {
